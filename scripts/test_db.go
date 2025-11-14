@@ -11,7 +11,6 @@ import (
 )
 
 func main() {
-	fmt.Println("🧪 Testing Database Connection\n")
 
 	// Load .env file
 	if err := godotenv.Load(); err != nil {
@@ -51,8 +50,6 @@ func main() {
 	if err := db.Ping(); err != nil {
 		log.Fatal("❌ Failed to ping database:", err)
 	}
-
-	fmt.Println("✅ Database connection successful!\n")
 
 	// Get PostgreSQL version
 	var version string
