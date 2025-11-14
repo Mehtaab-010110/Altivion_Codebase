@@ -34,6 +34,7 @@ Thumbs.db
 
 # Dependencies
 /vendor/
-
+node_modules
+.next
 # Build artifacts
 /tmp/
