@@ -4,10 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"time"
-
 	"silentraven/internal/models"
 	"silentraven/pkg/config"
+	"time"
 
 	_ "github.com/lib/pq"
 )
