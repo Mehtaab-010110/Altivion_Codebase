@@ -8,7 +8,7 @@ import (
 	"silentraven/internal/models"
 )
 
-// Event represents a CoT XML event
+// CoT XML structures
 type Event struct {
 	XMLName xml.Name `xml:"event"`
 	Version string   `xml:"version,attr"`
@@ -26,26 +26,18 @@ type Point struct {
 	Lat float64 `xml:"lat,attr"`
 	Lon float64 `xml:"lon,attr"`
 	Hae float64 `xml:"hae,attr"`
-	CE  float64 `xml:"ce,attr"`
-	LE  float64 `xml:"le,attr"`
+	Ce  float64 `xml:"ce,attr"`
+	Le  float64 `xml:"le,attr"`
 }
 
 type Detail struct {
 	Contact Contact `xml:"contact"`
 	Remarks string  `xml:"remarks"`
-	Link    *Link   `xml:"link,omitempty"`
-	Track   *Track  `xml:"track,omitempty"`
+	Track   Track   `xml:"track"`
 }
 
 type Contact struct {
 	Callsign string `xml:"callsign,attr"`
-}
-
-type Link struct {
-	UID      string `xml:"uid,attr"`
-	Type     string `xml:"type,attr"`
-	Relation string `xml:"relation,attr"`
-	Point    Point  `xml:"point"`
 }
 
 type Track struct {
@@ -58,14 +50,31 @@ func ConvertToCoT(detection models.DroneDetection) ([]byte, error) {
 	now := time.Now().UTC()
 	stale := now.Add(2 * time.Minute)
 
-	// Build UID
-	uid := fmt.Sprintf("SilentRaven.UAS.%s", detection.UASID)
+	// Safe UASID extraction
+	uidSuffix := detection.UASID
+	if len(detection.UASID) > 4 {
+		uidSuffix = detection.UASID[len(detection.UASID)-4:]
+	}
+	uid := fmt.Sprintf("SilentRaven.UAS.%s", uidSuffix)
 
-	// Determine threat level
-	cotType := determineCoTType(detection)
+	// CoT type: a-h-A-M-F-Q
+	// a = atom (entity)
+	// h = hostile
+	// A = Air
+	// M = Military
+	// F = Fixed wing (or rotary if needed)
+	// Q = Unmanned Aerial System
+	cotType := "a-h-A-M-F-Q"
 
-	// Build callsign
-	callsign := fmt.Sprintf("UAS-%s", detection.UASID[len(detection.UASID)-4:])
+	// Build remarks with detection details
+	remarks := fmt.Sprintf(`Remote-ID Detection
+Node: %s
+Type: %s
+Speed: %.1f m/s @ %d°`,
+		detection.SN,
+		detection.DroneType,
+		detection.SpeedHorizontal,
+		detection.Direction)
 
 	event := Event{
 		Version: "2.0",
@@ -74,78 +83,34 @@ func ConvertToCoT(detection models.DroneDetection) ([]byte, error) {
 		Time:    now.Format(time.RFC3339),
 		Start:   now.Format(time.RFC3339),
 		Stale:   stale.Format(time.RFC3339),
-		How:     "m-g", // machine-GPS
+		How:     "m-g", // m-g = machine generated
 		Point: Point{
 			Lat: detection.Latitude,
 			Lon: detection.Longitude,
 			Hae: detection.Height,
-			CE:  10.0,
-			LE:  15.0,
+			Ce:  10.0, // Circular error (meters)
+			Le:  15.0, // Linear error (meters)
 		},
 		Detail: Detail{
 			Contact: Contact{
-				Callsign: callsign,
+				Callsign: fmt.Sprintf("UAS-%s", uidSuffix),
 			},
-			Remarks: buildRemarks(detection),
+			Remarks: remarks,
+			Track: Track{
+				Course: float64(detection.Direction),
+				Speed:  detection.SpeedHorizontal,
+			},
 		},
 	}
 
-	// Add velocity if moving
-	if detection.SpeedHorizontal > 0 {
-		event.Detail.Track = &Track{
-			Course: float64(detection.Direction), // ✅ FIXED - convert int to float64
-			Speed:  detection.SpeedHorizontal,
-		}
-	}
-
-	// Add operator link if available
-	if detection.OperatorLatitude != 0 && detection.OperatorLongitude != 0 {
-		event.Detail.Link = &Link{
-			UID:      fmt.Sprintf("SilentRaven.Operator.%s", detection.UASID),
-			Type:     "a-h-G-U-C", // Hostile ground unit
-			Relation: "p-p",
-			Point: Point{
-				Lat: detection.OperatorLatitude,
-				Lon: detection.OperatorLongitude,
-				Hae: 0,
-				CE:  20.0,
-				LE:  20.0,
-			},
-		}
-	}
-
 	// Marshal to XML
-	output, err := xml.MarshalIndent(event, "", "  ")
+	xmlData, err := xml.MarshalIndent(event, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("marshal XML: %w", err)
+		return nil, fmt.Errorf("marshal CoT XML: %w", err)
 	}
 
 	// Add XML declaration
-	xmlHeader := []byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n")
-	return append(xmlHeader, output...), nil
-}
+	fullXML := []byte(xml.Header + string(xmlData))
 
-func determineCoTType(detection models.DroneDetection) string {
-	// For Sandbox demo, mark all as hostile for visibility
-	// TODO: Add logic for authorized drone database lookup
-	if detection.OperatorLatitude == 0 && detection.OperatorLongitude == 0 {
-		return "a-u-A" // Unknown - no operator info
-	}
-	return "a-h-A-M-F-Q" // Hostile military fixed-wing quadcopter
-}
-
-func buildRemarks(detection models.DroneDetection) string {
-	return fmt.Sprintf(`Remote-ID Detection
-Node: %s
-UASID: %s
-Type: %s
-Speed: %.1f m/s @ %.0f°
-Altitude: %.0fm`,
-		detection.SN,
-		detection.UASID,
-		detection.DroneType,
-		detection.SpeedHorizontal,
-		float64(detection.Direction),
-		detection.Height,
-	)
+	return fullXML, nil
 }
