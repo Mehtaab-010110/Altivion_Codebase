@@ -118,7 +118,7 @@ func main() {
 			continue
 		}
 
-		var detection models.DroneDetection
+		var detection models.IncomingPacket
 		if err := json.Unmarshal(msg.Value, &detection); err != nil {
 			log.Printf("Parse error: %v", err)
 			reader.CommitMessages(ctx, msg)

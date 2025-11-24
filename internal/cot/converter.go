@@ -45,8 +45,8 @@ type Track struct {
 	Speed  float64 `xml:"speed,attr"`
 }
 
-// ConvertToCoT converts DroneDetection to CoT XML
-func ConvertToCoT(detection models.DroneDetection) ([]byte, error) {
+// ConvertToCoT converts IncomingPacket to CoT XML
+func ConvertToCoT(detection models.IncomingPacket) ([]byte, error) {
 	now := time.Now().UTC()
 	stale := now.Add(2 * time.Minute)
 
